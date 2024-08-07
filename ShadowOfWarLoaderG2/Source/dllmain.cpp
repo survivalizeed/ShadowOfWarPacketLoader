@@ -58,6 +58,8 @@ DWORD WINAPI MainThread(LPVOID param) {
 		FUNCTIONS::log("Hooked Oodle_LZDecompress\n", PLG1, 1);
 	}
 
+	//TEst comment
+
 	//PLG2
 	{
 		using namespace INTERNAL::TYPES::GLOBALS::PLG2;
