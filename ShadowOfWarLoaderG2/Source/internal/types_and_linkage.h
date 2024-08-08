@@ -5,7 +5,7 @@ namespace INTERNAL::TYPES {
 
     struct File {
         __int64 handle_ptr;
-        __int64(*read_file_callback)(File*, __int64, __int64);
+		__int64* vfTable; // Not relevant
         BYTE offset1[8];
         __int64 file_offset;
         BYTE offset2[8];
@@ -20,12 +20,37 @@ namespace INTERNAL::TYPES {
 
 #pragma warning(disable: 26495)
 	namespace PLG1_ {
-		struct Data {
+
+		enum class Type {
+			Old,
+			Safe,
+			Auto
+		};
+
+
+		struct FindData {
+			struct SafeProperties {
+				unsigned int signature_read_offset;
+				unsigned int signature_verify_bytes_length;
+				unsigned int signature_check_length;
+			} safeProperties;
+
 			std::string path;
 			std::vector<BYTE> bytes;
-			unsigned int siglen = 0;
-			bool old = false;
-			int debug_index = 0;
+			std::vector<BYTE> signature;
+			Type type;
+			unsigned int debug_index = 0;
+			bool remove = false;
+		};
+
+		struct ReplaceData {
+			struct SafeProperties {
+				unsigned int exchange_data_read_offset;
+				unsigned int exchange_data_length;
+			} safeProperties;
+
+			std::string path;
+			std::vector<BYTE> bytes;
 		};
 	}
 
@@ -34,8 +59,8 @@ namespace INTERNAL::TYPES {
 			std::string path;
 			std::vector<BYTE> bytes;
 			std::vector<BYTE> signature;
-			int debug_index = 0;
-			int reconstruct_index = 0;
+			unsigned int debug_index = 0;
+			unsigned int reconstruct_index = 0;
 			bool size_emulation = false;
 		};
 
@@ -137,10 +162,10 @@ namespace INTERNAL::TYPES {
 
 		// untouched
 		namespace PLG1 {
-			extern std::vector<TYPES::PLG1_::Data> one_vec_sigs;
-			extern std::vector<std::vector<TYPES::PLG1_::Data>> sigs;
+			extern std::vector<TYPES::PLG1_::FindData> one_vec_sigs;
+			extern std::vector<std::vector<TYPES::PLG1_::FindData>> sigs;
 
-			extern std::vector<std::vector<BYTE>> exchangedata;
+			extern std::vector<TYPES::PLG1_::ReplaceData> exchangedata;
 
 			extern std::set<std::vector<BYTE>> cachesigs;
 

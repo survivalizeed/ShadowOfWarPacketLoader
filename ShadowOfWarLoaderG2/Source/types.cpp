@@ -82,10 +82,10 @@ namespace INTERNAL::TYPES {
 
 		// untouched
 		namespace PLG1 {
-			std::vector<TYPES::PLG1_::Data> one_vec_sigs;
-			std::vector<std::vector<TYPES::PLG1_::Data>> sigs;
+			std::vector<TYPES::PLG1_::FindData> one_vec_sigs;
+			std::vector<std::vector<TYPES::PLG1_::FindData>> sigs;
 
-			std::vector<std::vector<BYTE>> exchangedata;
+			std::vector<TYPES::PLG1_::ReplaceData> exchangedata;
 
 			std::set<std::vector<BYTE>> cachesigs;
 

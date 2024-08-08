@@ -322,6 +322,7 @@ namespace INTERNAL::TYPES::HOOK {
 							memcpy(destination, (const void*)(exchangedata[index].bytes.data() + snaprelFileOffset), size);
 
 							snaprelFileOffset += size;
+
 							if (snaprelFileOffset >= one_vec_sigs[index].bytes.size()) {
 								limit = true;
 							}
@@ -420,10 +421,9 @@ namespace INTERNAL::TYPES::HOOK {
 
 			int ret = od_function(in, insz, out, outsz, a, b, c, d, e, f, g, h, i, j);
 		invalidChunk:;
-			auto outStore = out;
+
 			static int datawritten = 1, dump_chunks_counter = 1;
-			static bool activeChunk = false;
-			static bool done = false, once = false, sigonce = false;
+			static bool done = false, once = false, sigonce = false, activeChunk = false, loadOnce = false;
 			static uintptr_t dataIndex = 0, index = 0, chunksize = 0;
 			uintptr_t offsetIndex = 0;
 			uintptr_t address = 0;
@@ -432,6 +432,15 @@ namespace INTERNAL::TYPES::HOOK {
 			static std::string invalidpath;
 			chunks_checked++;
 
+			auto restoreDefault = [&]() {
+				activeChunk = false;
+				dataIndex = 0;
+				datawritten++;
+				address = 0;
+				std::vector<BYTE>().swap(one_vec_sigs[index].bytes);
+				std::vector<BYTE>().swap(exchangedata[index].bytes);
+				loadOnce = false;
+			};
 
 			if (!once) {
 				if (dump_all) {
@@ -472,7 +481,7 @@ namespace INTERNAL::TYPES::HOOK {
 
 			if (!activeChunk && !one_vec_sigs.empty()) {
 				std::vector<std::thread> threads(thwcc - 1);
-				auto searchThreadFunc = [&](const std::vector<TYPES::PLG1_::Data>& sigs) {
+				auto searchThreadFunc = [&](const std::vector<TYPES::PLG1_::FindData>& sigs) {
 					int idx = 0;
 					uintptr_t local_address = 0;
 					while (local_address == 0 && idx < sigs.size()) {
@@ -480,7 +489,7 @@ namespace INTERNAL::TYPES::HOOK {
 							local_address = FUNCTIONS::searchPatternInMemory(sigs[idx], (const unsigned char*)out, (const unsigned char*)(out + chunksize));
 						if (local_address != 0) {
 							for (int i = 0; i < one_vec_sigs.size(); ++i) {
-								if (sigs[idx].bytes == one_vec_sigs[i].bytes) {
+								if (sigs[idx].signature == one_vec_sigs[i].signature) {
 									index = i;
 									address = local_address;
 								}
@@ -488,7 +497,7 @@ namespace INTERNAL::TYPES::HOOK {
 						}
 						idx++;
 					}
-					};
+				};
 				for (int i = 0; i < (int)thwcc - 1; i++) {
 					threads[i] = std::thread(searchThreadFunc, std::cref(sigs[i]));
 				}
@@ -548,9 +557,47 @@ namespace INTERNAL::TYPES::HOOK {
 				activeChunk = true;
 			}
 			if (activeChunk) {
+				if (!loadOnce) {
+					
+					// Load the data from the disc into memory
+
+					if (one_vec_sigs[index].type == INTERNAL::TYPES::PLG1_::Type::Safe) {
+						one_vec_sigs[index].bytes = FUNCTIONS::read_block(one_vec_sigs[index].safeProperties.signature_read_offset,
+							one_vec_sigs[index].safeProperties.signature_verify_bytes_length, one_vec_sigs[index].path);
+
+						exchangedata[index].bytes = FUNCTIONS::read_block(exchangedata[index].safeProperties.exchange_data_read_offset,
+							exchangedata[index].safeProperties.exchange_data_length, exchangedata[index].path);
+					}
+					else if (one_vec_sigs[index].type == INTERNAL::TYPES::PLG1_::Type::Old) {
+						exchangedata[index].bytes = FUNCTIONS::read_block(exchangedata[index].safeProperties.exchange_data_read_offset,
+							exchangedata[index].safeProperties.exchange_data_length, exchangedata[index].path);
+					}
+					else if (one_vec_sigs[index].type == INTERNAL::TYPES::PLG1_::Type::Auto) {
+						{
+							std::ifstream file(one_vec_sigs[index].path, std::ios::binary | std::ios::ate);
+							std::streamsize size = file.tellg();
+							file.seekg(0, std::ios::beg);
+							std::vector<BYTE> tmp(size);
+							file.read((char*)tmp.data(), size);
+							one_vec_sigs[index].bytes = tmp;
+							
+						}
+						{
+							std::ifstream file(exchangedata[index].path, std::ios::binary | std::ios::ate);
+							std::streamsize size = file.tellg();
+							file.seekg(0, std::ios::beg);
+							std::vector<BYTE> tmp(size);
+							file.read((char*)tmp.data(), size);
+							exchangedata[index].bytes = tmp;
+							
+						}
+					}
+					loadOnce = true;
+				}
+
 				if (address == 0) address = out;
-				while (offsetIndex < chunksize - (address - out) && dataIndex < exchangedata[index].size()) {
-					if (!one_vec_sigs[index].old)
+				while (offsetIndex < chunksize - (address - out) && dataIndex < exchangedata[index].bytes.size()) {
+					if (one_vec_sigs[index].type != INTERNAL::TYPES::PLG1_::Type::Old)
 						if (index < one_vec_sigs[index].bytes.size())
 							if (*(BYTE*)(address + offsetIndex) != one_vec_sigs[index].bytes[dataIndex]) {
 								FUNCTIONS::log("Invalid chunk detected after (d): " + std::to_string(offsetIndex) + " bytes\n", TYPES::PLG1, 3);
@@ -558,23 +605,23 @@ namespace INTERNAL::TYPES::HOOK {
 								if (debug)
 									FUNCTIONS::log("Use the last dump file carefully\n", TYPES::PLG1, 4);
 								std::cout << "\n";
-								activeChunk = false;
+								
 								invalidpath = one_vec_sigs[index].path;
-								dataIndex = 0;
-								datawritten++;
+								restoreDefault();
 								goto invalidChunk;
 							}
-					*(BYTE*)(address + offsetIndex) = exchangedata[index][dataIndex];
+					if (one_vec_sigs[index].remove)
+						*(BYTE*)(address + offsetIndex) = 0;
+					else 
+						*(BYTE*)(address + offsetIndex) = exchangedata[index].bytes[dataIndex];
 					dataIndex++;
 					offsetIndex++;
 				}
-				if (dataIndex >= exchangedata[index].size()) {
+				if (dataIndex >= exchangedata[index].bytes.size()) {
 					FUNCTIONS::log("Completely overwritten\n", TYPES::PLG1, 1);
 					FUNCTIONS::log("Rescanning chunk for other data...\n\n", TYPES::PLG1, 1);
-					activeChunk = false;
-					dataIndex = 0;
-					datawritten++;
-
+					invalidpath = one_vec_sigs[index].path;
+					restoreDefault();
 					chunks_checked--;
 					goto invalidChunk;
 				}

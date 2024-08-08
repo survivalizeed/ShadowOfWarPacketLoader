@@ -69,16 +69,16 @@ namespace INTERNAL::FUNCTIONS {
 		return (uintptr_t)GetProcAddress(GetModuleHandleA("oo2core_5_win64.dll"), "OodleLZ_Decompress");
 	}
 
-	inline bool detect_whitelisted_path(const std::string& path) {
-		static std::vector<std::string> whitelist = {
-			".\\plugins\\Loader\\Signatures",
-			".\\plugins\\Loader\\Dumps"
-		};
-		for (auto& iter : whitelist)
-			if (path == iter)
-				return true;
-		return false;
-	}
+	//inline bool detect_whitelisted_path(const std::string& path) {
+	//	static std::vector<std::string> whitelist = {
+	//		".\\plugins\\Loader\\Signatures",
+	//		".\\plugins\\Loader\\Dumps"
+	//	};
+	//	for (auto& iter : whitelist)
+	//		if (path == iter)
+	//			return true;
+	//	return false;
+	//}
 
 	inline void removeBlacklistFromVector(std::vector<fs::path>& vector) {
 		for (int i = 0; i < vector.size(); ++i) {
@@ -120,10 +120,27 @@ namespace INTERNAL::FUNCTIONS {
 		return data;
 	}
 
+
 	inline void terminate(TYPES::Message m) {
 		FUNCTIONS::log("Terminating in 10 seconds...\n", m, 3);
-		Sleep(7000);
+		Sleep(10000);
 		exit(-1);
+	}
+
+	inline bool containsFlag(const std::string& file_name, const std::string& section, const std::string& constant) {
+		std::ifstream file(file_name);
+		std::string line;
+		bool found = false;
+		while (std::getline(file, line)) {
+			if (line.front() == '[' && line.back() == ']')
+				if (found)
+					break;
+				else if (line.substr(1, line.size() - 2) == section)
+					found = true;
+			if (found && line == constant)
+				return true;
+		}
+		return false;
 	}
 
 	inline void get_loader_entries_G1() {
@@ -143,10 +160,12 @@ namespace INTERNAL::FUNCTIONS {
 				log("Searching in " + entry.path().string() + "\n", TYPES::PLG1, 1);
 				mINI::INIFile file(entry.path().string() + "\\Config.ini");
 				mINI::INIStructure ini;
+					
 				if (!file.read(ini)) {
 					log("Unable to find " + entry.path().string() + "\\Config.ini\n", TYPES::PLG1_ERROR, 2);
 					FUNCTIONS::terminate(TYPES::PLG1_ERROR);
 				}
+				
 				auto subfolder = entry.path().string() + "\\Find";
 				int counter = 1;
 				if (!fs::exists(subfolder)) {
@@ -157,32 +176,48 @@ namespace INTERNAL::FUNCTIONS {
 				std::copy(fs::directory_iterator(subfolder), fs::directory_iterator(), std::back_inserter(files_in_find_directory));
 				std::sort(files_in_find_directory.begin(), files_in_find_directory.end(), compareByIndex);
 				removeBlacklistFromVector(files_in_find_directory);
-				for (const auto& findEntry : files_in_find_directory) {
-					
+
+				auto section = to_string(counter);
+
+				for (const auto& findEntry : files_in_find_directory) {	
 					log("Reading " + findEntry.string() + "\n", TYPES::PLG1, 2);
-					if (!ini.has(to_string(counter))) {
-						log("Unable to find [" + to_string(counter) + "] section in the Config.ini\n", TYPES::PLG1_ERROR, 3);
+					if (!ini.has(section)) {
+						log("Unable to find [" + section + "] section in the Config.ini\n", TYPES::PLG1_ERROR, 3);
 						FUNCTIONS::terminate(TYPES::PLG1_ERROR);
 					}
-					TYPES::PLG1_::Data data;
-					data.path = findEntry.string();
-					try {
-						data.bytes = read_block(stoi(ini[to_string(counter)]["signature_read_offset"]), stoi(ini[to_string(counter)]["signature_verify_bytes_length"]), findEntry.string());
-						data.siglen = stoi(ini[to_string(counter)]["signature_check_length"]);
-						data.old = false;
+					TYPES::PLG1_::FindData findData;
+					findData.path = findEntry.string();
+							
+					if (containsFlag(entry.path().string() + "\\Config.ini", section, "<<REMOVE>>"))
+						findData.remove = true;			
+					if (containsFlag(entry.path().string() + "\\Config.ini", section, "<<AUTO>>")) {
+						findData.signature = read_block(0, stoi(ini[section]["signature_check_length"]), findEntry.string());
+						findData.type = TYPES::PLG1_::Type::Auto;
 					}
-					catch (...) {
-						log("Section [" + to_string(counter) + "] is not the newest G1 standard. Consider updating the packet!\n", TYPES::PLG1, 4);
-						data.bytes = read_block(stoi(ini[to_string(counter)]["signature_read_offset"]), stoi(ini[to_string(counter)]["signature_length"]), findEntry.string());
-						data.siglen = stoi(ini[to_string(counter)]["signature_length"]);
-						data.old = true;
+					else {
+						try {
+							findData.signature = read_block(stoi(ini[section]["signature_read_offset"]), stoi(ini[section]["signature_check_length"]), findEntry.string());
+							findData.safeProperties.signature_read_offset = stoi(ini[section]["signature_read_offset"]);
+							findData.safeProperties.signature_check_length = stoi(ini[section]["signature_check_length"]);
+							findData.safeProperties.signature_verify_bytes_length = stoi(ini[section]["signature_verify_bytes_length"]);
+							findData.type = TYPES::PLG1_::Type::Safe;
+						}
+						catch (...) {
+							log("Section [" + section + "] is not the newest G1 standard. Consider updating the packet!\n", TYPES::PLG1, 4);
+							findData.signature = read_block(stoi(ini[section]["signature_read_offset"]), stoi(ini[section]["signature_length"]), findEntry.string());
+							findData.safeProperties.signature_read_offset = stoi(ini[section]["signature_read_offset"]);
+							findData.safeProperties.signature_check_length = stoi(ini[to_string(counter)]["signature_length"]);
+							findData.type = TYPES::PLG1_::Type::Old;
+						}
 					}
-					one_vec_sigs.push_back(data);
+
+					one_vec_sigs.push_back(findData);
 					++counter;
 				}
 				log("Found " + to_string(counter - 1) + " entries in " + subfolder + "\n", TYPES::PLG1, 1);
 				counter = 1;
 				subfolder = entry.path().string() + "\\Replace";
+
 				if (!fs::exists(subfolder)) {
 					log("Unable to find " + subfolder + "\n", TYPES::PLG1_ERROR, 2);
 					FUNCTIONS::terminate(TYPES::PLG1_ERROR);
@@ -192,10 +227,20 @@ namespace INTERNAL::FUNCTIONS {
 				std::copy(fs::directory_iterator(subfolder), fs::directory_iterator(), std::back_inserter(files_in_replace_directory));
 				std::sort(files_in_replace_directory.begin(), files_in_replace_directory.end(), compareByIndex);
 				removeBlacklistFromVector(files_in_replace_directory);
+
 				for (const auto& replaceEntry : files_in_replace_directory) {
 					using namespace std;
 					log("Reading " + replaceEntry.string() + "\n", TYPES::PLG1, 2);
-					exchangedata.push_back(read_block(stoi(ini[to_string(counter)]["exchange_data_read_offset"]), stoi(ini[to_string(counter)]["exchange_data_length"]), replaceEntry.string()));
+
+					TYPES::PLG1_::ReplaceData replaceData;
+					replaceData.path = replaceEntry.string();
+					
+					if (ini[section].has("exchange_data_read_offset")) {
+						replaceData.safeProperties.exchange_data_read_offset = stoi(ini[section]["exchange_data_read_offset"]);
+						replaceData.safeProperties.exchange_data_length = stoi(ini[section]["exchange_data_length"]);
+					}
+				
+					exchangedata.push_back(replaceData);
 					++counter;
 				}
 				log("Found " + to_string(counter - 1) + " entries in " + subfolder + "\n\n", TYPES::PLG1, 1);
@@ -279,12 +324,12 @@ namespace INTERNAL::FUNCTIONS {
 		file.close();
 	}
 
-	inline std::vector<std::vector<TYPES::PLG1_::Data>> splitVector(const std::vector<TYPES::PLG1_::Data>& inputVector, size_t N) {
-		std::vector<std::vector<TYPES::PLG1_::Data>> ret;
+	inline std::vector<std::vector<TYPES::PLG1_::FindData>> splitVector(const std::vector<TYPES::PLG1_::FindData>& inputVector, size_t N) {
+		std::vector<std::vector<TYPES::PLG1_::FindData>> ret;
 		size_t nLimit = ceil((double)inputVector.size() / N);
 		auto start = inputVector.begin();
 		for (size_t i = 0; i < inputVector.size(); i += nLimit) {
-			std::vector<TYPES::PLG1_::Data> v(start + i, start + std::min<size_t>(i + nLimit, inputVector.size()));
+			std::vector<TYPES::PLG1_::FindData> v(start + i, start + std::min<size_t>(i + nLimit, inputVector.size()));
 			ret.push_back(v);
 		}
 		return ret;
@@ -337,10 +382,10 @@ namespace INTERNAL::FUNCTIONS {
 	}
 
 
-	inline uintptr_t searchPatternInMemory(const TYPES::PLG1_::Data& pattern, const unsigned char* startAddress, const unsigned char* endAddress) {
+	inline uintptr_t searchPatternInMemory(const TYPES::PLG1_::FindData& pattern, const unsigned char* startAddress, const unsigned char* endAddress) {
 		if (startAddress == nullptr) return 0;
-		for (uintptr_t address = (uintptr_t)startAddress; address < (uintptr_t)endAddress - pattern.siglen + 1; ++address) {
-			if (std::memcmp((const void*)address, (const void*)(pattern.bytes.data()), pattern.siglen) == 0) {
+		for (uintptr_t address = (uintptr_t)startAddress; address < (uintptr_t)endAddress - pattern.signature.size() + 1; ++address) {
+			if (std::memcmp((const void*)address, (const void*)(pattern.signature.data()), pattern.signature.size()) == 0) {
 				return address;
 			}
 		}
