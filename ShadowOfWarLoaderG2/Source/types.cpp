@@ -74,6 +74,8 @@ namespace INTERNAL::TYPES {
 		bool dump_all;
 		bool extract;
 		bool re_construct;
+		bool log;
+		std::string log_file_name;
 
 		HWND console;
 		HANDLE ch;

@@ -14,6 +14,9 @@
 #include <direct.h>
 #include <set>
 #include <atomic>
+#include <iomanip>
+#include <ctime>
+#include <sstream>
 
 namespace fs = std::filesystem;
 #define oc(h,color) SetConsoleTextAttribute(h, color)

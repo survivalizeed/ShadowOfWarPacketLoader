@@ -420,7 +420,7 @@ namespace INTERNAL::TYPES::HOOK {
 			using namespace INTERNAL::TYPES::GLOBALS;
 
 			int ret = od_function(in, insz, out, outsz, a, b, c, d, e, f, g, h, i, j);
-		invalidChunk:;
+		reScan:;
 
 			static int datawritten = 1, dump_chunks_counter = 1;
 			static bool done = false, once = false, sigonce = false, activeChunk = false, loadOnce = false;
@@ -433,6 +433,7 @@ namespace INTERNAL::TYPES::HOOK {
 			chunks_checked++;
 
 			auto restoreDefault = [&]() {
+				invalidpath = one_vec_sigs[index].path;
 				activeChunk = false;
 				dataIndex = 0;
 				datawritten++;
@@ -601,17 +602,21 @@ namespace INTERNAL::TYPES::HOOK {
 						if (index < one_vec_sigs[index].bytes.size())
 							if (*(BYTE*)(address + offsetIndex) != one_vec_sigs[index].bytes[dataIndex]) {
 								FUNCTIONS::log("Invalid chunk detected after (d): " + std::to_string(offsetIndex) + " bytes\n", TYPES::PLG1, 3);
-								FUNCTIONS::log("Rescanning chunk for other data...\n", TYPES::PLG1, 3);
+								FUNCTIONS::log("Rescanning the chunk for other data...\n", TYPES::PLG1, 3);
 								if (debug)
 									FUNCTIONS::log("Use the last dump file carefully\n", TYPES::PLG1, 4);
 								std::cout << "\n";
-								
-								invalidpath = one_vec_sigs[index].path;
 								restoreDefault();
-								goto invalidChunk;
+								goto reScan;
 							}
-					if (one_vec_sigs[index].remove)
-						*(BYTE*)(address + offsetIndex) = 0;
+					if (one_vec_sigs[index].remove) {
+						FUNCTIONS::log("Remove mode is turned on...\n", TYPES::PLG1, 2);
+						FUNCTIONS::log("Removed the magic and version from the file!\n", TYPES::PLG1, 2);
+						FUNCTIONS::log("Rescanning the chunk for other data...\n\n", TYPES::PLG1, 2);
+						*(__int64*)(address + offsetIndex) = 0i64;
+						restoreDefault();
+						goto reScan;
+					}
 					else 
 						*(BYTE*)(address + offsetIndex) = exchangedata[index].bytes[dataIndex];
 					dataIndex++;
@@ -619,11 +624,10 @@ namespace INTERNAL::TYPES::HOOK {
 				}
 				if (dataIndex >= exchangedata[index].bytes.size()) {
 					FUNCTIONS::log("Completely overwritten\n", TYPES::PLG1, 1);
-					FUNCTIONS::log("Rescanning chunk for other data...\n\n", TYPES::PLG1, 1);
-					invalidpath = one_vec_sigs[index].path;
+					FUNCTIONS::log("Rescanning the chunk for other data...\n\n", TYPES::PLG1, 1);
 					restoreDefault();
 					chunks_checked--;
-					goto invalidChunk;
+					goto reScan;
 				}
 			}
 			return ret;

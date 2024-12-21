@@ -11,6 +11,7 @@ DWORD WINAPI MainThread(LPVOID param) {
 	RECT rect = { 100, 100, 1250, 1000 };
 	MoveWindow(GLOBALS::console, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, TRUE);
 	GLOBALS::ch = GetStdHandle(STD_OUTPUT_HANDLE);
+	
 	std::thread asyncTitle(FUNCTIONS::refreshTitle);
 	asyncTitle.detach();
 
@@ -31,12 +32,22 @@ DWORD WINAPI MainThread(LPVOID param) {
 		GLOBALS::debug = (bool)std::stoi(ini["config"]["debug"]);
 		GLOBALS::dump_all = (bool)std::stoi(ini["config"]["dump_all"]);
 		GLOBALS::re_construct = (bool)std::stoi(ini["config"]["re_construct"]);
+		GLOBALS::log = (bool)std::stoi(ini["config"]["log"]);
 	}
 	catch (...) {
-		FUNCTIONS::log("Invalid PacketLoader.ini", TYPES::ERROR, 2);
+		FUNCTIONS::log("Invalid PacketLoader.ini\n", TYPES::ERROR, 2);
 		FUNCTIONS::terminate(TYPES::ERROR);
 	}
 
+	if (GLOBALS::log) {
+		std::time_t now = std::time(nullptr);
+		std::tm localTime = *std::localtime(&now);
+		std::ostringstream oss;
+		oss << std::put_time(&localTime, "%d-%m-%y %H-%M-%S");
+
+		(void)_mkdir(".\\plugins\\PacketLoader\\Internal\\Logs");
+		GLOBALS::log_file_name = ".\\plugins\\PacketLoader\\Internal\\Logs\\" + oss.str() + " PacketLoader.log";
+	}
 
 	//PLG1
 	{

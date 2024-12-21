@@ -154,6 +154,8 @@ namespace INTERNAL::TYPES {
 		extern bool dump_all;
 		extern bool extract;
 		extern bool re_construct;
+		extern bool log;
+		extern std::string log_file_name;
 
 		extern HWND console;
 		extern HANDLE ch;

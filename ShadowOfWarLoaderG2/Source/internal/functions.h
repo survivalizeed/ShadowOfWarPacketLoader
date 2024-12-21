@@ -33,7 +33,6 @@ namespace INTERNAL::FUNCTIONS {
 		default:
 			break;
 		}
-
 		switch (layer)
 		{
 		case 0:
@@ -60,6 +59,13 @@ namespace INTERNAL::FUNCTIONS {
 			break;
 		}
 		oc(ch, 7);
+		
+		if (INTERNAL::TYPES::GLOBALS::log) {
+			// Direct closing so when it crashes the latest output is still written without the buffer getting lost
+			std::ofstream log_file(INTERNAL::TYPES::GLOBALS::log_file_name, std::ios::app);
+			log_file << msg;
+			log_file.close();
+		}
 		std::cout << msg;
 	}
 
@@ -127,22 +133,6 @@ namespace INTERNAL::FUNCTIONS {
 		exit(-1);
 	}
 
-	inline bool containsFlag(const std::string& file_name, const std::string& section, const std::string& constant) {
-		std::ifstream file(file_name);
-		std::string line;
-		bool found = false;
-		while (std::getline(file, line)) {
-			if (line.front() == '[' && line.back() == ']')
-				if (found)
-					break;
-				else if (line.substr(1, line.size() - 2) == section)
-					found = true;
-			if (found && line == constant)
-				return true;
-		}
-		return false;
-	}
-
 	inline void get_loader_entries_G1() {
 		using namespace INTERNAL::TYPES::GLOBALS::PLG1;
 
@@ -176,10 +166,11 @@ namespace INTERNAL::FUNCTIONS {
 				std::copy(fs::directory_iterator(subfolder), fs::directory_iterator(), std::back_inserter(files_in_find_directory));
 				std::sort(files_in_find_directory.begin(), files_in_find_directory.end(), compareByIndex);
 				removeBlacklistFromVector(files_in_find_directory);
-
-				auto section = to_string(counter);
+			
 
 				for (const auto& findEntry : files_in_find_directory) {	
+					auto section = to_string(counter);
+
 					log("Reading " + findEntry.string() + "\n", TYPES::PLG1, 2);
 					if (!ini.has(section)) {
 						log("Unable to find [" + section + "] section in the Config.ini\n", TYPES::PLG1_ERROR, 3);
@@ -188,11 +179,21 @@ namespace INTERNAL::FUNCTIONS {
 					TYPES::PLG1_::FindData findData;
 					findData.path = findEntry.string();
 							
-					if (containsFlag(entry.path().string() + "\\Config.ini", section, "<<REMOVE>>"))
-						findData.remove = true;			
-					if (containsFlag(entry.path().string() + "\\Config.ini", section, "<<AUTO>>")) {
-						findData.signature = read_block(0, stoi(ini[section]["signature_check_length"]), findEntry.string());
-						findData.type = TYPES::PLG1_::Type::Auto;
+					if (ini[section].has("mode")) {
+						if (ini[section]["mode"] == "remove") {
+							findData.signature = read_block(0, stoi(ini[section]["signature_check_length"]), findEntry.string());
+							findData.remove = true;
+							findData.type = INTERNAL::TYPES::PLG1_::Type::Auto;
+						}
+						else if (ini[section]["mode"] == "auto") {
+							findData.signature = read_block(0, stoi(ini[section]["signature_check_length"]), findEntry.string());
+							findData.type = INTERNAL::TYPES::PLG1_::Type::Auto;
+						}
+						else {
+							log("Invalid mode in section [" + section + "]\n", TYPES::PLG1_ERROR, 3);
+							FUNCTIONS::terminate(TYPES::PLG1_ERROR);
+						}
+							
 					}
 					else {
 						try {
@@ -229,6 +230,8 @@ namespace INTERNAL::FUNCTIONS {
 				removeBlacklistFromVector(files_in_replace_directory);
 
 				for (const auto& replaceEntry : files_in_replace_directory) {
+					auto section = to_string(counter);
+
 					using namespace std;
 					log("Reading " + replaceEntry.string() + "\n", TYPES::PLG1, 2);
 
