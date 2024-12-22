@@ -347,47 +347,47 @@ namespace INTERNAL::TYPES::HOOK {
 									deleteLoaded();
 									FUNCTIONS::log("Finished\n\n", TYPES::PLG2, 1);
 								}
+								else {
+									FUNCTIONS::log("Readjusting the relative file offset...\n", TYPES::PLG2, 1);
+									std::vector<uintptr_t> addresses;
+									uintptr_t start = 0;
+									uintptr_t end = 0;
+									if (chunk_changed) {
+										start = file->source_ptr;
+										end = file->source_ptr + file->currently_loaded_size;
+									}
+									else {
+										start = address_backup + one_vec_sigs[index].bytes.size();
+										end = start + (file->currently_loaded_size - (start - file->source_ptr));
+									}
+									for (auto& magic : TYPES::MAGICS::MAGICS) {
+										std::optional<uintptr_t> val = FUNCTIONS::searchPatternInMemory(magic, (const unsigned char*)start,
+											(const unsigned char*)end);
+										if (!val.has_value())
+											continue;
+										addresses.push_back(val.value());
+									}
+									uintptr_t val = 0;
+									if (addresses.empty()) {
+										FUNCTIONS::log("Unable to readjust the relative file offset\n", TYPES::PLG2, 2);
+										FUNCTIONS::log("This might be because it was the last file in the chunk\n", TYPES::PLG2, 2);
+									}
+									else {
+										val = *std::min_element(addresses.begin(), addresses.end());
+										file->file_relative_offset = val - file->source_ptr;
+										if (file->file_relative_offset >= 4) file->file_relative_offset -= 4;
+										FUNCTIONS::log("Readjusted the relative file offset\n", TYPES::PLG2, 2);
+									}
+									readjustRelOffset = false;
+									chunk_changed = false;
+									onceNotify = false;
+									deleteLoaded();
+									FUNCTIONS::log("Finished\n\n", TYPES::PLG2, 1);
+								}
 							}
 						}
 					}
 					else {
-						if (readjustRelOffset) {
-							FUNCTIONS::log("Readjusting the relative file offset...\n", TYPES::PLG2, 1);
-							std::vector<uintptr_t> addresses;
-							uintptr_t start = 0;
-							uintptr_t end = 0;
-							if (chunk_changed) {
-								start = file->source_ptr;
-								end = file->source_ptr + file->currently_loaded_size;
-							}
-							else {
-								start = address_backup + one_vec_sigs[index].bytes.size();
-								end = start + (file->currently_loaded_size - (start - file->source_ptr));
-							}
-							for (auto& magic : TYPES::MAGICS::MAGICS) {
-								std::optional<uintptr_t> val = FUNCTIONS::searchPatternInMemory(magic, (const unsigned char*)start,
-									(const unsigned char*)end);
-								if (!val.has_value())
-									continue;
-								addresses.push_back(val.value());
-							}
-							uintptr_t val = 0;
-							if (addresses.empty()) {
-								FUNCTIONS::log("Unable to readjust the relative file offset\n", TYPES::PLG2, 2);
-								FUNCTIONS::log("This could be because this was the last file in the EMBB container or it's an error\n", TYPES::PLG2, 2);
-							}
-							else {
-								val = *std::min_element(addresses.begin(), addresses.end());
-								file->file_relative_offset = val - file->source_ptr;
-								if (file->file_relative_offset >= 4) file->file_relative_offset -= 4;
-								FUNCTIONS::log("Readjusted the relative file offset\n", TYPES::PLG2, 2);
-							}
-							readjustRelOffset = false;
-							chunk_changed = false;
-							onceNotify = false;
-							deleteLoaded();
-							FUNCTIONS::log("Finished\n\n", TYPES::PLG2, 1);
-						}
 					INVALIDCHUNK:;
 						invalidChunkCheckOnce = false;
 						memcpy(destination, (const void*)(file->source_ptr + (__int64)file->file_relative_offset), size);
