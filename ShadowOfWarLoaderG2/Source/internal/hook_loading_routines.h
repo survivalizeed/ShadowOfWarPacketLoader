@@ -365,6 +365,7 @@ namespace INTERNAL::TYPES::HOOK {
 											(const unsigned char*)end);
 										if (!val.has_value())
 											continue;
+
 										addresses.push_back(val.value());
 									}
 									uintptr_t val = 0;
